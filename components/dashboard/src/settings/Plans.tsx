@@ -185,6 +185,7 @@ export default function () {
 
     const [ confirmUpgradeToPlan, setConfirmUpgradeToPlan ] = useState<Plan>();
     const [ confirmDowngradeToPlan, setConfirmDowngradeToPlan ] = useState<Plan>();
+    const [ isConfirmCancelDowngrade, setIsConfirmCancelDowngrade ] = useState<boolean>(false);
     const confirmUpgrade = (to: Plan) => {
         if (pendingUpgradePlan || pendingDowngradePlan) {
             // Don't upgrade if we're still waiting for a Chargebee callback
@@ -267,6 +268,29 @@ export default function () {
             setConfirmDowngradeToPlan(undefined);
         }
     }
+    const confirmCancelDowngrade = () => {
+        if (!scheduledDowngradePlanId) {
+            // No scheduled downgrade to be cancelled?
+            return;
+        }
+        if ((paidSubscription?.paymentReference || '').startsWith("github:")) {
+            return;
+        }
+        setIsConfirmCancelDowngrade(true);
+    }
+    const doCancelDowngrade = async (event: React.MouseEvent) => {
+        if (!isConfirmCancelDowngrade || !paidSubscription) {
+            return;
+        }
+        try {
+            await server.subscriptionCancelDowngrade(paidSubscription.uid);
+            // TODO: Update state somehow?
+        } catch (error) {
+            console.error('Cancel Downgrade Error', error);
+        } finally {
+            setIsConfirmCancelDowngrade(false);
+        }
+    }
 
     const planCards = [];
 
@@ -282,7 +306,7 @@ export default function () {
         const targetPlan = freePlan;
         let bottomLabel;
         if (scheduledDowngradePlanId === targetPlan.chargebeeId) {
-            bottomLabel = <p className="text-green-600">Downgrade scheduled<br/><a className="text-blue-light leading-6" href="javascript:void(0)">Cancel</a></p>;
+            bottomLabel = <p className="text-green-600">Downgrade scheduled<br/><a className="text-blue-light leading-6" href="javascript:void(0)" onClick={() => confirmCancelDowngrade()}>Cancel</a></p>;
         } else if (pendingDowngradePlan?.chargebeeId === targetPlan.chargebeeId) {
             bottomLabel = <p className="text-green-600 animate-pulse">Downgrade scheduled</p>;
         }
@@ -305,7 +329,7 @@ export default function () {
         const targetPlan = applyCoupons(personalPlan, availableCoupons);
         let bottomLabel;
         if (scheduledDowngradePlanId === targetPlan.chargebeeId) {
-            bottomLabel = <p className="text-green-600">Downgrade scheduled<br/><a className="text-blue-light leading-6" href="javascript:void(0)">Cancel</a></p>;
+            bottomLabel = <p className="text-green-600">Downgrade scheduled<br/><a className="text-blue-light leading-6" href="javascript:void(0)"  onClick={() => confirmCancelDowngrade()}>Cancel</a></p>;
         } else if (pendingDowngradePlan?.chargebeeId === targetPlan.chargebeeId) {
             bottomLabel = <p className="text-green-600">Downgrade scheduled</p>;
         }
@@ -331,7 +355,7 @@ export default function () {
         const targetPlan = applyCoupons(professionalPlan, availableCoupons);
         let bottomLabel;
         if (scheduledDowngradePlanId === targetPlan.chargebeeId) {
-            bottomLabel = <p className="text-green-600">Downgrade scheduled<br/><a className="text-blue-light leading-6" href="javascript:void(0)">Cancel</a></p>;
+            bottomLabel = <p className="text-green-600">Downgrade scheduled<br/><a className="text-blue-light leading-6" href="javascript:void(0)" onClick={() => confirmCancelDowngrade()}>Cancel</a></p>;
         } else if (pendingDowngradePlan?.chargebeeId === targetPlan.chargebeeId) {
             bottomLabel = <p className="text-green-600">Downgrade scheduled</p>;
         }
@@ -422,6 +446,19 @@ export default function () {
                 </div>
                 <div className="flex justify-end mt-6">
                     <button className="bg-red-600 border-red-800" onClick={doDowngrade}>Downgrade Plan</button>
+                </div>
+            </Modal>}
+            {isConfirmCancelDowngrade && <Modal visible={true} onClose={() => setIsConfirmCancelDowngrade(false)}>
+                <h3>Cancel downgrade and stay with {currentPlan.name}</h3>
+                <div className="border-t border-b border-gray-200 mt-4 -mx-6 px-6 py-2">
+                    <p className="mt-1 mb-4 text-base">You are about to cancel the scheduled downgrade and stay with {currentPlan.name}.</p>
+                    <div className="flex rounded-md bg-gray-200 p-4 mb-4">
+                        <img className="w-4 h-4 m-1 ml-2 mr-4" src={info} />
+                        <span>You can continue using it right away.</span>
+                    </div>
+                </div>
+                <div className="flex justify-end mt-6">
+                    <button className="bg-red-600 border-red-800" onClick={doCancelDowngrade}>Cancel Downgrade</button>
                 </div>
             </Modal>}
             {!!teamClaimModal && (<Modal visible={true} onClose={() => setTeamClaimModal(undefined)}>
