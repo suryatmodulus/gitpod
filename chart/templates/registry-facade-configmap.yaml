@@ -23,17 +23,10 @@ data:
             "port": {{ $comp.ports.registry.containerPort }},
             {{- end }}
             {{- if (or .Values.certificatesSecret.secretName $comp.certificatesSecret.secretName) }}
-            {{- if (or .Values.certificatesSecret.certManager $comp.certificatesSecret.certManager) }}
             "tls": {
                 "crt": "/mnt/certificates/tls.crt",
                 "key": "/mnt/certificates/tls.key"
             },
-            {{ else -}}
-            "tls": {
-                "crt": "/mnt/certificates/fullchain.pem",
-                "key": "/mnt/certificates/privkey.pem"
-            },
-            {{ end -}}
             {{ end -}}
             "remoteSpecProvider": {
                 "addr": "ws-manager:{{ .Values.components.wsManager.ports.rpc.containerPort }}",

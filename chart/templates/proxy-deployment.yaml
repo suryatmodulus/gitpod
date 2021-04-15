@@ -93,16 +93,14 @@ spec:
           privileged: false
         readinessProbe:
           httpGet:
-            path: "/nginx/status"
+            path: "/ready"
             port: 8003
-          initialDelaySeconds: 0
-          periodSeconds: 1
+          initialDelaySeconds: 10
+          periodSeconds: 5
           timeoutSeconds: 1
           successThreshold: 1
           failureThreshold: 3
         volumeMounts:
-        - name: config-nginx
-          mountPath: "/mnt/nginx"
 {{- if index .Values "docker-registry" "enabled" }}
         - name: builtin-registry-auth
           mountPath: "/mnt/nginx/registry-auth"
@@ -110,10 +108,6 @@ spec:
 {{- if $.Values.certificatesSecret.secretName }}
         - name: config-certificates
           mountPath: "/mnt/nginx/certificates"
-{{- end }}
-{{- if $comp.sslDHParam }}
-        - name: config-ssl-dhparam
-          mountPath: "/mnt/nginx/ssl-dhparam"
 {{- end }}
 {{ include "gitpod.container.configmap.volumeMounts" $this | indent 8 }}
 {{ include "gitpod.container.defaultEnv" (dict "root" . "gp" $.Values "comp" $comp "noVersion" true) | indent 8 }}
@@ -124,12 +118,6 @@ spec:
             secretKeyRef:
               name: server-proxy-apikey
               key: apikey
-{{- if $comp.certbot.enabled }}
-        - name: CERTBOT_ENABLED
-          value: "true"
-        - name: CERTBOT_EMAIL
-          value: "{{ $comp.certbot.email }}"
-{{- end }}
 {{- if (and $wsProxy (not $wsProxy.disabled) $wsProxy.portRange) }}
       - name: ws-proxy
         image: {{ template "gitpod.comp.imageFull" $thisWsProxy }}
@@ -152,9 +140,6 @@ spec:
           privileged: false
 {{- end }}
       volumes:
-      - name: config-nginx
-        configMap:
-          name: {{ $comp.name }}-config-nginx
 {{- if index .Values "docker-registry" "enabled" }}
       - name: builtin-registry-auth
         secret:
@@ -165,25 +150,14 @@ spec:
         configMap:
           name: ws-proxy-config
 {{- end }}
-{{- if $comp.sslDHParam }}
-      - name: config-ssl-dhparam
-        secret:
-          secretName: server-proxy-ssl-dhparam
-{{- end }}
-{{- if $.Values.certificatesSecret.secretName }}
       - name: config-certificates
         secret:
           secretName: {{ $.Values.certificatesSecret.secretName }}
-{{- if (and $.Values.certificatesSecret.fullChainName $.Values.certificatesSecret.chainName $.Values.certificatesSecret.keyName) }}
           items:
-          - key: {{ $.Values.certificatesSecret.fullChainName }}
-            path: fullchain.pem
-          - key: {{ $.Values.certificatesSecret.chainName }}
-            path: chain.pem
-          - key: {{ $.Values.certificatesSecret.keyName }}
-            path: privkey.pem
-{{- end }}
-{{- end }}
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
 {{ include "gitpod.container.configmap.volumes" $this | indent 6 }}
 {{ toYaml .Values.defaults | indent 6 }}
 {{ end }}
