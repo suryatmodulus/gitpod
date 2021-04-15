@@ -107,7 +107,7 @@ spec:
 {{- end }}
 {{- if $.Values.certificatesSecret.secretName }}
         - name: config-certificates
-          mountPath: "/mnt/nginx/certificates"
+          mountPath: "/etc/caddy/certificates"
 {{- end }}
 {{ include "gitpod.container.configmap.volumeMounts" $this | indent 8 }}
 {{ include "gitpod.container.defaultEnv" (dict "root" . "gp" $.Values "comp" $comp "noVersion" true) | indent 8 }}
@@ -153,11 +153,6 @@ spec:
       - name: config-certificates
         secret:
           secretName: {{ $.Values.certificatesSecret.secretName }}
-          items:
-          - key: tls.crt
-            path: tls.crt
-          - key: tls.key
-            path: tls.key
 {{ include "gitpod.container.configmap.volumes" $this | indent 6 }}
 {{ toYaml .Values.defaults | indent 6 }}
 {{ end }}

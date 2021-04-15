@@ -1,0 +1,251 @@
+{
+	# disable automatic SSL certificate generation
+	auto_https off
+	# disable admin API server
+	admin off
+
+	# set default SNI for old clients
+	default_sni {$GITPOD_DOMAIN}
+
+	# debug
+}
+
+(compression) {
+	encode zstd gzip
+}
+
+# configure headers to force HTTPS and enable more strict rules for the browser
+(security_headers) {
+	header {
+		# enable HSTS
+		Strict-Transport-Security max-age=31536000;
+		# disable clients from sniffing the media type
+		X-Content-Type-Options nosniff
+		# Disallow the site to be rendered within a frame (clickjacking protection)
+		X-Frame-Options SAMEORIGIN
+		# keep referrer data off of HTTP connections
+		Referrer-Policy no-referrer-when-downgrade
+		# Enable cross-site filter (XSS) and tell browser to block detected attacks
+		X-XSS-Protection "1; mode=block"
+		# Prevent search engines from indexing
+		X-Robots-Tag "none"
+	}
+}
+
+(enable_log) {
+	log {
+		output stdout
+		format json {
+			time_format rfc3339
+		}
+	}
+}
+
+(disable_log) {
+	log {
+		output discard
+	}
+}
+
+(remove_server_header) {
+	header {
+		-Server
+	}
+}
+
+(ssl_configuration) {
+	tls /etc/caddy/certificates/tls.crt /etc/caddy/certificates/tls.key {
+		#ca_root   <pem_file>
+	}
+}
+
+(upstream_headers) {
+	header_up Host {http.request.host}
+	header_up X-Real-IP {http.request.remote.host}
+}
+
+(upstream_connection) {
+	lb_try_duration 1s
+}
+
+(debug_headers) {
+	header_down X-Gitpod-Region {$GITPOD_INSTALLATION_LONGNAME}
+}
+
+(cors_preflight) {
+	header {
+		Access-Control-Allow-Methods	"GET,POST,OPTIONS"
+		Access-Control-Allow-Headers 	"Accept,Authorization,Cache-Control,Content-Type,DNT,If-Modified-Since,Keep-Alive,Origin,User-Agent,X-Requested-With"
+		# Setting duration: 86400 (1 day)
+		Access-Control-Max-Age 			"60"
+		Content-Length 					"0"
+		Content-Type					"text/plain"
+	}
+
+	respond 204
+}
+
+# health-check
+:8003 {
+	import disable_log
+
+	respond /live 200
+	respond /ready 200
+}
+
+# configure prometheus
+:9145 {
+	import disable_log
+
+	metrics /metrics
+}
+
+# TODO: is this being used?
+http://health*.{$GITPOD_DOMAIN} {
+	import disable_log
+	import remove_server_header
+
+	respond "alive"
+}
+
+# always redirect to HTTPS
+http:// {
+	redir https://{host}{uri} permanent
+}
+
+https://minio.{$GITPOD_DOMAIN} {
+	import enable_log
+	import remove_server_header
+	import ssl_configuration
+
+	reverse_proxy minio.{$KUBE_NAMESPACE}.{$KUBE_DOMAIN}:9000 {
+		flush_interval -1
+	}
+}
+
+https://{$GITPOD_DOMAIN} {
+	import enable_log
+	import remove_server_header
+	import ssl_configuration
+
+	@backend_wss path /api/gitpod
+	handle @backend_wss {
+		uri strip_prefix /api
+		reverse_proxy server.{$KUBE_NAMESPACE}.{$KUBE_DOMAIN}:3000 {
+			import upstream_headers
+		}
+	}
+
+	@backend path /api/* /admin/*
+	handle @backend {
+		import security_headers
+		import compression
+
+		uri strip_prefix /api
+		reverse_proxy server.{$KUBE_NAMESPACE}.{$KUBE_DOMAIN}:3000 {
+			import upstream_headers
+			import upstream_connection
+		}
+	}
+
+	@codesync_preflight {
+		path   /code-sync /code-sync/*
+		method OPTIONS
+	}
+	handle @codesync_preflight {
+		import cors_preflight
+	}
+
+	@codesync path /code-sync /code-sync/*
+	handle @codesync {
+		import security_headers
+		import compression
+
+		reverse_proxy server.{$KUBE_NAMESPACE}.{$KUBE_DOMAIN}:3000 {
+			import upstream_headers
+			import upstream_connection
+
+			header_down Access-Control-Allow-Credentials	"true"
+			header_down Access-Control-Expose-Headers		"Authorization,etag,x-operation-id,retry-after"
+			header_down	Access-Control-Allow-Origin			"{http.request.header.origin}" # TODO: fix.
+			header_down Access-Control-Allow-Methods 		"POST,GET,OPTIONS,DELETE"
+			header_down Access-Control-Allow-Headers		"Accept,Authorization,Cache-Control,Content-Type,DNT,If-Modified-Since,Keep-Alive,Origin,User-Agent,X-Requested-With,X-Account-Type,X-Client-Commit,X-Client-Name,X-Client-Version,X-Execution-Id,X-Machine-Id,X-Machine-Session-Id,X-User-Session-Id,If-Match,If-None-Match"
+
+			flush_interval -1
+		}
+	}
+
+	@to_server path /auth/github/callback /auth /auth/* /apps /apps/*
+	handle @to_server {
+		import security_headers
+		import compression
+
+		reverse_proxy server.{$KUBE_NAMESPACE}.{$KUBE_DOMAIN}:3000 {
+			import upstream_headers
+			import upstream_connection
+		}
+	}
+
+	handle {
+		import security_headers
+		import compression
+
+		reverse_proxy dashboard.{$KUBE_NAMESPACE}.{$KUBE_DOMAIN}:3001 {
+			import upstream_headers
+			import upstream_connection
+		}
+	}
+
+	handle_errors {
+		redir https://{$GITPOD_DOMAIN}/sorry/#Error%20{http.handlers.reverse_proxy.response.status_code} 302
+	}
+}
+
+https://blobserve.{$GITPOD_DOMAIN} {
+	import enable_log
+	import security_headers
+	import remove_server_header
+	import ssl_configuration
+	import compression
+
+	reverse_proxy ws-proxy.{$KUBE_NAMESPACE}.{$KUBE_DOMAIN}:8080 {
+		import upstream_headers
+		header_up x-wsproxy-host {http.request.host}
+	}
+}
+
+# workspaces
+https://*.*.{$GITPOD_DOMAIN} {
+	import enable_log
+	import security_headers
+	import remove_server_header
+	import ssl_configuration
+	import compression
+
+	@workspace 	header_regexp host Host ^(webview-|browser-|extensions-)?(?P<workspaceID>[a-z0-9][0-9a-z\-]+).ws(?P<location>-[a-z0-9]+)?.{$GITPOD_DOMAIN}
+	@workspace_port header_regexp host Host ^(webview-|browser-|extensions-)?(?P<workspacePort>[0-9]{2,5})-(?P<workspaceID>[a-z0-9][0-9a-z\-]+).ws(?P<location>-[a-z0-9]+)?.{$GITPOD_DOMAIN}
+
+	handle @workspace_port {
+		reverse_proxy ws-{re.host.workspaceID}-ports.{$KUBE_NAMESPACE}.{$KUBE_DOMAIN}:{re.host.workspacePort} {
+			import upstream_headers
+			import debug_headers
+
+			header_up 	X-Gitpod-WorkspaceId 	{re.host.workspaceID}
+			header_up 	X-Gitpod-Port 			{re.host.workspacePort}
+		}
+	}
+
+	handle @workspace {
+		reverse_proxy ws-proxy.{$KUBE_NAMESPACE}.{$KUBE_DOMAIN}:8080 {
+			import upstream_headers
+			import debug_headers
+
+			header_up 	X-Gitpod-WorkspaceId 	{re.host.workspaceID}
+			header_up 	X-WSProxy-Host 			{http.request.host}
+		}
+	}
+
+	respond "Not found" 404
+}
+
+import /etc/caddy/vhost.*
