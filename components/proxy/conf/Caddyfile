@@ -167,7 +167,7 @@ https://{$GITPOD_DOMAIN} {
 
 			header_down Access-Control-Allow-Credentials	"true"
 			header_down Access-Control-Expose-Headers		"Authorization,etag,x-operation-id,retry-after"
-			header_down	Access-Control-Allow-Origin			"{http.request.header.origin}" # TODO: fix.
+			header_down	Access-Control-Allow-Origin			"*.${GITPOD_DOMAIN}" # TODO: fix.
 			header_down Access-Control-Allow-Methods 		"POST,GET,OPTIONS,DELETE"
 			header_down Access-Control-Allow-Headers		"Accept,Authorization,Cache-Control,Content-Type,DNT,If-Modified-Since,Keep-Alive,Origin,User-Agent,X-Requested-With,X-Account-Type,X-Client-Commit,X-Client-Name,X-Client-Version,X-Execution-Id,X-Machine-Id,X-Machine-Session-Id,X-User-Session-Id,If-Match,If-None-Match"
 
@@ -242,6 +242,12 @@ https://*.*.{$GITPOD_DOMAIN} {
 
 			header_up 	X-Gitpod-WorkspaceId 	{re.host.workspaceID}
 			header_up 	X-WSProxy-Host 			{http.request.host}
+
+			header_down Access-Control-Allow-Credentials	"true"
+			header_down Access-Control-Expose-Headers		"Authorization,etag,x-operation-id,retry-after"
+			header_down	Access-Control-Allow-Origin			"*.{$GITPOD_DOMAIN}" # TODO: fix.
+			header_down Access-Control-Allow-Methods 		"POST,GET,DELETE"
+			header_down Access-Control-Allow-Headers		"Accept,Authorization,Cache-Control,Content-Type,DNT,If-Modified-Since,Keep-Alive,Origin,User-Agent,X-Requested-With,X-Account-Type,X-Client-Commit,X-Client-Name,X-Client-Version,X-Execution-Id,X-Machine-Id,X-Machine-Session-Id,X-User-Session-Id,If-Match,If-None-Match"
 		}
 	}
 
