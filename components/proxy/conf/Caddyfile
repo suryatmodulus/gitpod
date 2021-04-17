@@ -85,6 +85,13 @@
 	respond 204
 }
 
+(extract_valid_cors_origin) {
+	map {header.Referer}						{allow_origin} {
+		~https://(.*).ws(.*).{$GITPOD_DOMAIN}.* $1.ws$2.{$GITPOD_DOMAIN}
+		default 								{$GITPOD_DOMAIN}
+	}
+}
+
 # health-check
 :8003 {
 	import disable_log
@@ -156,11 +163,11 @@ https://{$GITPOD_DOMAIN} {
 		import cors_preflight
 	}
 
-	@cors_origin header_regexp referer Referer ^https://(?P<sdprefix>.*).ws(?P<location>-[a-z0-9]+)?.{$GITPOD_DOMAIN}
 	@codesync path /code-sync /code-sync/*
 	handle @codesync {
 		import security_headers
 		import compression
+		import extract_valid_cors_origin
 
 		reverse_proxy server.{$KUBE_NAMESPACE}.{$KUBE_DOMAIN}:3000 {
 			import upstream_headers
@@ -168,7 +175,7 @@ https://{$GITPOD_DOMAIN} {
 
 			header_down Access-Control-Allow-Credentials	"true"
 			header_down Access-Control-Expose-Headers		"Authorization,etag,x-operation-id,retry-after"
-			header_down	Access-Control-Allow-Origin			"{re.referer.sdprefix}.${GITPOD_DOMAIN}"
+			header_down	Access-Control-Allow-Origin			"https://{allow_origin}"
 			header_down Access-Control-Allow-Methods 		"POST,GET,OPTIONS,DELETE"
 			header_down Access-Control-Allow-Headers		"Accept,Authorization,Cache-Control,Content-Type,DNT,If-Modified-Since,Keep-Alive,Origin,User-Agent,X-Requested-With,X-Account-Type,X-Client-Commit,X-Client-Name,X-Client-Version,X-Execution-Id,X-Machine-Id,X-Machine-Session-Id,X-User-Session-Id,If-Match,If-None-Match"
 
@@ -234,9 +241,10 @@ https://*.*.{$GITPOD_DOMAIN} {
 		}
 	}
 
-	@cors_origin header_regexp referer Referer ^https://(?P<sdprefix>.*).ws(?P<location>-[a-z0-9]+)?.{$GITPOD_DOMAIN}
 	@workspace 	header_regexp host Host ^(webview-|browser-|extensions-)?(?P<workspaceID>[a-z0-9][0-9a-z\-]+).ws(?P<location>-[a-z0-9]+)?.{$GITPOD_DOMAIN}
 	handle @workspace {
+		import extract_valid_cors_origin
+
 		reverse_proxy ws-proxy.{$KUBE_NAMESPACE}.{$KUBE_DOMAIN}:8080 {
 			import upstream_headers
 			import debug_headers
@@ -246,7 +254,7 @@ https://*.*.{$GITPOD_DOMAIN} {
 
 			header_down Access-Control-Allow-Credentials	"true"
 			header_down Access-Control-Expose-Headers		"Authorization,etag,x-operation-id,retry-after"
-			header_down	Access-Control-Allow-Origin			"{re.referer.sdprefix}.${GITPOD_DOMAIN}"
+			header_down	Access-Control-Allow-Origin			"https://{allow_origin}"
 			header_down Access-Control-Allow-Methods 		"POST,GET,DELETE"
 			header_down Access-Control-Allow-Headers		"Accept,Authorization,Cache-Control,Content-Type,DNT,If-Modified-Since,Keep-Alive,Origin,User-Agent,X-Requested-With,X-Account-Type,X-Client-Commit,X-Client-Name,X-Client-Version,X-Execution-Id,X-Machine-Id,X-Machine-Session-Id,X-User-Session-Id,If-Match,If-None-Match"
 		}
